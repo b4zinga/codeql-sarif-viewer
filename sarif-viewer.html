@@ -1,0 +1,1199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeQL SARIF 报告分析器</title>
+    <style>
+        /* ==================== 全局样式 ==================== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            /* 颜色变量 */
+            --bg-primary: #1e1e1e;
+            --bg-secondary: #252526;
+            --bg-tertiary: #2d2d30;
+            --bg-elevated: #3c3c3c;
+            --border-color: #3e3e42;
+            --text-primary: #d4d4d4;
+            --text-secondary: #cccccc;
+            --text-muted: #858585;
+            --accent-primary: #4ec9b0;
+            --accent-blue: #0e639c;
+            --accent-warning: #cca700;
+            --accent-error: #f48771;
+            --highlight-yellow: #ffc107;
+            --highlight-red: #dc3545;
+            --source-color: #f44336;
+            --sink-color: #ff9800;
+
+            /* 间距 */
+            --spacing-xs: 4px;
+            --spacing-sm: 8px;
+            --spacing-md: 12px;
+            --spacing-lg: 16px;
+            --spacing-xl: 20px;
+
+            /* 圆角 */
+            --radius-sm: 3px;
+            --radius-md: 4px;
+            --radius-lg: 6px;
+            --radius-xl: 8px;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+        }
+
+        /* ==================== 文件选择器 ==================== */
+        .file-selector-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+
+        .file-selector-overlay.hidden {
+            display: none;
+        }
+
+        .file-selector-box {
+            background: white;
+            padding: 60px;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            text-align: center;
+            max-width: 500px;
+        }
+
+        .file-selector-box h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+
+        .file-selector-box p {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 16px;
+        }
+
+        .file-upload-btn {
+            display: inline-block;
+            padding: var(--spacing-lg) 48px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: var(--radius-xl);
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 600;
+            font-size: 16px;
+            border: none;
+        }
+
+        .file-upload-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .file-upload-btn input {
+            display: none;
+        }
+
+        /* ==================== 主布局 ==================== */
+        .main-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .toolbar {
+            background: var(--bg-tertiary);
+            padding: var(--spacing-md) var(--spacing-xl);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        .toolbar-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        .toolbar-stats {
+            font-size: 12px;
+            color: var(--text-muted);
+            display: flex;
+            gap: var(--spacing-xl);
+        }
+
+        .toolbar-stats .error-count {
+            color: var(--accent-error);
+        }
+
+        .toolbar-stats .warning-count {
+            color: var(--accent-warning);
+        }
+
+        .toolbar-actions button {
+            background: var(--accent-blue);
+            color: white;
+            border: none;
+            padding: 6px var(--spacing-lg);
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.2s;
+        }
+
+        .toolbar-actions button:hover {
+            background: #1177bb;
+        }
+
+        /* ==================== Grid 布局 ==================== */
+        .grid-container {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 1fr 4px 450px;
+            grid-template-rows: 1fr 4px 320px;
+            overflow: hidden;
+        }
+
+        /* ==================== 通用面板样式 ==================== */
+        .panel {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: var(--bg-primary);
+        }
+
+        .panel-header {
+            background: var(--bg-tertiary);
+            padding: 10px var(--spacing-lg);
+            border-bottom: 1px solid var(--border-color);
+            font-size: 13px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+
+        .panel-header-title {
+            font-weight: 600;
+        }
+
+        .panel-content {
+            flex: 1;
+            overflow: auto;
+            min-height: 0;
+        }
+
+        /* ==================== 代码查看器 ==================== */
+        .code-viewer {
+            grid-column: 1;
+            grid-row: 1;
+            border-right: 1px solid var(--border-color);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .file-path {
+            font-family: 'Courier New', monospace;
+            color: var(--accent-primary);
+        }
+
+        .code-content {
+            padding: 0;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .code-line-wrapper {
+            display: flex;
+            background: var(--bg-primary);
+        }
+
+        .line-numbers {
+            background: var(--bg-primary);
+            color: var(--text-muted);
+            padding: var(--spacing-lg) 0;
+            text-align: right;
+            user-select: none;
+            min-width: 50px;
+            border-right: 1px solid var(--border-color);
+        }
+
+        .line-number {
+            padding: 0 var(--spacing-md);
+            line-height: 1.6;
+        }
+
+        .code-lines {
+            flex: 1;
+            padding: var(--spacing-lg);
+            color: var(--text-primary);
+        }
+
+        .code-line {
+            line-height: 1.6;
+            white-space: pre;
+            padding: 0 var(--spacing-sm);
+        }
+
+        .code-line.error-line {
+            background: rgba(220, 53, 69, 0.15);
+            border-left: 3px solid var(--highlight-red);
+            margin-left: -3px;
+        }
+
+        .code-highlight {
+            background: rgba(255, 193, 7, 0.35);
+            border-radius: 2px;
+            padding: 2px 0;
+            box-shadow: 0 0 0 2px rgba(255, 193, 7, 0.2);
+        }
+
+        /* ==================== 数据流链路 ==================== */
+        .flow-panel {
+            grid-column: 3;
+            grid-row: 1;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .flow-content {
+            padding: var(--spacing-lg);
+        }
+
+        .flow-node {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-left: 3px solid var(--accent-primary);
+            border-radius: var(--radius-md);
+            padding: var(--spacing-md);
+            margin-bottom: var(--spacing-md);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .flow-node:hover {
+            background: #37373d;
+            border-left-color: #4fc3f7;
+        }
+
+        .flow-node.active {
+            background: #37373d;
+            border-left-color: var(--highlight-yellow);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .flow-node.source {
+            border-left-color: var(--source-color);
+        }
+
+        .flow-node.sink {
+            border-left-color: var(--sink-color);
+        }
+
+        .flow-node-step {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-bottom: var(--spacing-xs);
+        }
+
+        .flow-node-message {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+
+        .flow-node-location {
+            font-size: 11px;
+            font-family: 'Courier New', monospace;
+            color: var(--accent-primary);
+            word-break: break-all;
+            line-height: 1.4;
+        }
+
+        .flow-connector {
+            width: 2px;
+            height: var(--spacing-md);
+            background: var(--accent-primary);
+            margin-left: var(--spacing-md);
+        }
+
+        /* ==================== 漏洞列表 ==================== */
+        .vulnerability-list-panel {
+            grid-column: 1;
+            grid-row: 3;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+        }
+
+        .vulnerability-list {
+            padding: 0;
+        }
+
+        .vulnerability-item {
+            padding: var(--spacing-md) var(--spacing-lg);
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            align-items: start;
+            gap: var(--spacing-md);
+        }
+
+        .vulnerability-item:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .vulnerability-item.active {
+            background: #37373d;
+            border-left: 3px solid var(--highlight-yellow);
+        }
+
+        .vulnerability-icon {
+            width: 20px;
+            height: 20px;
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .vulnerability-icon.error {
+            background: rgba(244, 135, 113, 0.2);
+            color: var(--accent-error);
+        }
+
+        .vulnerability-icon.warning {
+            background: rgba(204, 167, 0, 0.2);
+            color: var(--accent-warning);
+        }
+
+        .vulnerability-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .vulnerability-title {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: var(--spacing-xs);
+            font-weight: 500;
+        }
+
+        .vulnerability-meta {
+            font-size: 11px;
+            color: var(--text-muted);
+            display: flex;
+            gap: var(--spacing-lg);
+        }
+
+        .vulnerability-id {
+            font-family: 'Courier New', monospace;
+        }
+
+        .vulnerability-count {
+            background: var(--bg-elevated);
+            padding: 2px var(--spacing-sm);
+            border-radius: var(--radius-sm);
+            font-size: 11px;
+            color: var(--text-secondary);
+            flex-shrink: 0;
+        }
+
+        /* ==================== 漏洞实例 ==================== */
+        .instance-panel {
+            grid-column: 3;
+            grid-row: 3;
+            background: var(--bg-secondary);
+        }
+
+        .instance-list {
+            padding: 0;
+        }
+
+        .instance-item {
+            padding: var(--spacing-md) var(--spacing-lg);
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-md);
+        }
+
+        .instance-item:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .instance-item.active {
+            background: #37373d;
+            border-left: 3px solid var(--accent-primary);
+        }
+
+        .instance-number {
+            background: var(--bg-elevated);
+            color: var(--text-secondary);
+            padding: var(--spacing-xs) 10px;
+            border-radius: var(--radius-md);
+            font-size: 12px;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .instance-item.active .instance-number {
+            background: var(--accent-primary);
+            color: var(--bg-primary);
+        }
+
+        .instance-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .instance-location {
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-family: 'Courier New', monospace;
+            margin-bottom: var(--spacing-xs);
+            word-break: break-all;
+            line-height: 1.4;
+        }
+
+        .instance-steps {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        /* ==================== 分隔条 ==================== */
+        .resizer {
+            background: var(--border-color);
+            position: relative;
+            z-index: 10;
+        }
+
+        .resizer:hover {
+            background: var(--accent-primary);
+        }
+
+        .resizer.resizing {
+            background: var(--accent-primary);
+        }
+
+        .resizer-vertical {
+            grid-column: 1 / 4;
+            grid-row: 2;
+            cursor: row-resize;
+        }
+
+        .resizer-horizontal-top {
+            grid-column: 2;
+            grid-row: 1;
+            cursor: col-resize;
+        }
+
+        .resizer-horizontal-bottom {
+            grid-column: 2;
+            grid-row: 3;
+            cursor: col-resize;
+        }
+
+        /* ==================== 滚动条 ==================== */
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #424242;
+            border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4e4e4e;
+        }
+
+        /* ==================== 空状态 ==================== */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-muted);
+            font-size: 14px;
+            padding: 40px 20px;
+        }
+
+        .empty-state svg {
+            width: 48px;
+            height: 48px;
+            margin-bottom: var(--spacing-lg);
+            opacity: 0.5;
+        }
+
+        /* ==================== 工具提示 ==================== */
+        .snippet-warning {
+            padding: var(--spacing-lg);
+            background: var(--bg-tertiary);
+            color: var(--accent-warning);
+            font-size: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+    </style>
+</head>
+<body>
+    <!-- 文件选择器 -->
+    <div class="file-selector-overlay" id="fileSelectorOverlay">
+        <div class="file-selector-box">
+            <h1>CodeQL SARIF 分析器</h1>
+            <p>选择 SARIF 或 JSON 格式的扫描报告文件</p>
+            <label class="file-upload-btn">
+                选择报告文件
+                <input type="file" id="fileInput" accept=".sarif,.json">
+            </label>
+        </div>
+    </div>
+
+    <!-- 主容器 -->
+    <div class="main-container">
+        <!-- 工具栏 -->
+        <div class="toolbar">
+            <div class="toolbar-title">CodeQL Security Analysis</div>
+            <div class="toolbar-stats">
+                <span>Total: <span id="totalCount">0</span></span>
+                <span class="error-count">Error: <span id="errorCount">0</span></span>
+                <span class="warning-count">Warning: <span id="warningCount">0</span></span>
+            </div>
+            <div class="toolbar-actions">
+                <button onclick="app.reloadFile()">重新加载文件</button>
+            </div>
+        </div>
+
+        <!-- Grid 布局 -->
+        <div class="grid-container" id="gridContainer">
+            <!-- 代码查看器 -->
+            <div class="panel code-viewer">
+                <div class="panel-header">
+                    <span>📄</span>
+                    <span class="file-path" id="currentFilePath">未选择文件</span>
+                </div>
+                <div class="panel-content code-content" id="codeContent">
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                            <polyline points="13 2 13 9 20 9"></polyline>
+                        </svg>
+                        <div>点击漏洞链路节点查看源代码</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 水平分隔条 - 上 -->
+            <div class="resizer resizer-horizontal-top" id="resizerHTop"></div>
+
+            <!-- 数据流链路 -->
+            <div class="panel flow-panel">
+                <div class="panel-header">
+                    <span class="panel-header-title">🔗 数据流链路</span>
+                </div>
+                <div class="panel-content flow-content" id="flowContent">
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="8" x2="12" y2="12"></line>
+                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                        </svg>
+                        <div>选择漏洞实例查看数据流</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 垂直分隔条 -->
+            <div class="resizer resizer-vertical" id="resizerV"></div>
+
+            <!-- 漏洞列表 -->
+            <div class="panel vulnerability-list-panel">
+                <div class="panel-header">
+                    <span class="panel-header-title">⚠️ 漏洞类别</span>
+                </div>
+                <div class="panel-content vulnerability-list" id="vulnerabilityList">
+                    <div class="empty-state">
+                        <div>暂无漏洞数据</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 水平分隔条 - 下 -->
+            <div class="resizer resizer-horizontal-bottom" id="resizerHBottom"></div>
+
+            <!-- 漏洞实例 -->
+            <div class="panel instance-panel">
+                <div class="panel-header">
+                    <span class="panel-header-title">📋 漏洞实例</span>
+                </div>
+                <div class="panel-content instance-list" id="instanceList">
+                    <div class="empty-state">
+                        <div>选择左侧漏洞类别</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==================== 应用状态管理 ====================
+        const app = {
+            // 数据状态
+            state: {
+                sarifData: null,
+                fileContents: {},
+                vulnerabilities: [],
+                currentVulnerability: null,
+                currentInstanceIndex: -1
+            },
+
+            // 初始化
+            init() {
+                this.bindEvents();
+            },
+
+            // 绑定事件
+            bindEvents() {
+                document.getElementById('fileInput').addEventListener('change', (e) => this.handleFileSelect(e));
+                this.initResizers();
+            },
+
+            // 文件选择处理
+            handleFileSelect(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        this.state.sarifData = JSON.parse(event.target.result);
+                        document.getElementById('fileSelectorOverlay').classList.add('hidden');
+                        this.parseAndRender();
+                    } catch (error) {
+                        alert('文件解析失败: ' + error.message);
+                    }
+                };
+                reader.readAsText(file);
+            },
+
+            // 重新加载文件
+            reloadFile() {
+                document.getElementById('fileSelectorOverlay').classList.remove('hidden');
+                this.state = {
+                    sarifData: null,
+                    fileContents: {},
+                    vulnerabilities: [],
+                    currentVulnerability: null,
+                    currentInstanceIndex: -1
+                };
+            },
+
+            // 解析 SARIF 数据
+            parseAndRender() {
+                const { sarifData } = this.state;
+                if (!sarifData?.runs?.length) {
+                    alert('无效的SARIF文件格式');
+                    return;
+                }
+
+                const run = sarifData.runs[0];
+                const results = run.results || [];
+                const rules = run.tool.driver.rules || [];
+                const artifacts = run.artifacts || [];
+
+                // 构建规则映射
+                const ruleMap = rules.reduce((map, rule) => {
+                    map[rule.id] = rule;
+                    return map;
+                }, {});
+
+                // 存储文件内容
+                artifacts.forEach(artifact => {
+                    if (artifact.contents?.text) {
+                        this.state.fileContents[artifact.location.uri] = artifact.contents.text;
+                    }
+                });
+
+                // 处理漏洞数据
+                this.state.vulnerabilities = this.processVulnerabilities(results, ruleMap);
+
+                // 渲染界面
+                this.renderStats(results);
+                this.renderVulnerabilityList();
+            },
+
+            // 处理漏洞数据（展开多个 codeFlows）
+            processVulnerabilities(results, ruleMap) {
+                const vulnerabilityMap = {};
+
+                results.forEach(result => {
+                    const ruleId = result.ruleId;
+                    const rule = ruleMap[ruleId] || {};
+
+                    // 初始化漏洞类别
+                    if (!vulnerabilityMap[ruleId]) {
+                        vulnerabilityMap[ruleId] = {
+                            ruleId,
+                            title: rule.shortDescription?.text || ruleId,
+                            description: rule.fullDescription?.text || '',
+                            level: result.level || 'error',
+                            securitySeverity: rule.properties?.['security-severity'],
+                            instances: []
+                        };
+                    }
+
+                    // 展开多个 codeFlows
+                    const codeFlows = result.codeFlows || [];
+                    if (codeFlows.length > 1) {
+                        codeFlows.forEach((flow, flowIndex) => {
+                            const flowResult = JSON.parse(JSON.stringify(result));
+                            flowResult.codeFlows = [flow];
+                            flowResult._flowIndex = flowIndex;
+                            vulnerabilityMap[ruleId].instances.push(flowResult);
+                        });
+                    } else {
+                        vulnerabilityMap[ruleId].instances.push(result);
+                    }
+                });
+
+                return Object.values(vulnerabilityMap);
+            },
+
+            // 渲染统计信息
+            renderStats(results) {
+                const total = results.length;
+                const errorCount = results.filter(r => !r.level || r.level === 'error').length;
+                const warningCount = results.filter(r => r.level === 'warning').length;
+
+                document.getElementById('totalCount').textContent = total;
+                document.getElementById('errorCount').textContent = errorCount;
+                document.getElementById('warningCount').textContent = warningCount;
+            },
+
+            // 渲染漏洞列表
+            renderVulnerabilityList() {
+                const { vulnerabilities } = this.state;
+                const container = document.getElementById('vulnerabilityList');
+
+                if (!vulnerabilities.length) {
+                    container.innerHTML = '<div class="empty-state"><div>未发现漏洞</div></div>';
+                    return;
+                }
+
+                const html = vulnerabilities.map((vuln, index) => {
+                    const iconType = vuln.level === 'warning' ? 'warning' : 'error';
+                    const icon = vuln.level === 'warning' ? '⚠' : '✕';
+
+                    return `
+                        <div class="vulnerability-item" onclick="app.selectVulnerability(${index})">
+                            <div class="vulnerability-icon ${iconType}">${icon}</div>
+                            <div class="vulnerability-info">
+                                <div class="vulnerability-title">${this.escapeHtml(vuln.title)}</div>
+                                <div class="vulnerability-meta">
+                                    <span class="vulnerability-id">${vuln.ruleId}</span>
+                                    ${vuln.securitySeverity ? `<span>Severity: ${vuln.securitySeverity}</span>` : ''}
+                                </div>
+                            </div>
+                            <div class="vulnerability-count">${vuln.instances.length}</div>
+                        </div>
+                    `;
+                }).join('');
+
+                container.innerHTML = html;
+            },
+
+            // 选择漏洞类别
+            selectVulnerability(index) {
+                this.state.currentVulnerability = this.state.vulnerabilities[index];
+                this.state.currentInstanceIndex = -1;
+
+                // 更新选中状态
+                document.querySelectorAll('.vulnerability-item').forEach((item, i) => {
+                    item.classList.toggle('active', i === index);
+                });
+
+                this.renderInstanceList();
+
+                // 清空数据流
+                document.getElementById('flowContent').innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="8" x2="12" y2="12"></line>
+                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                        </svg>
+                        <div>选择右侧漏洞实例</div>
+                    </div>
+                `;
+            },
+
+            // 渲染漏洞实例列表
+            renderInstanceList() {
+                const { currentVulnerability } = this.state;
+                const container = document.getElementById('instanceList');
+
+                if (!currentVulnerability) {
+                    container.innerHTML = '<div class="empty-state"><div>选择左侧漏洞类别</div></div>';
+                    return;
+                }
+
+                const html = currentVulnerability.instances.map((instance, index) => {
+                    const location = instance.locations?.[0]?.physicalLocation;
+                    const uri = location?.artifactLocation?.uri || 'unknown';
+                    const line = location?.region?.startLine || '?';
+
+                    // 计算步骤数
+                    const stepCount = instance.codeFlows?.[0]?.threadFlows?.[0]?.locations?.length || 0;
+
+                    // 实例编号
+                    const instanceNumber = instance._flowIndex !== undefined
+                        ? `Flow ${instance._flowIndex + 1}`
+                        : `#${index + 1}`;
+
+                    return `
+                        <div class="instance-item" onclick="app.selectInstance(${index})">
+                            <div class="instance-number">${instanceNumber}</div>
+                            <div class="instance-info">
+                                <div class="instance-location">${uri}:${line}</div>
+                                <div class="instance-steps">${stepCount} 个步骤</div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                container.innerHTML = html;
+            },
+
+            // 选择漏洞实例
+            selectInstance(index) {
+                this.state.currentInstanceIndex = index;
+
+                // 更新选中状态
+                document.querySelectorAll('.instance-item').forEach((item, i) => {
+                    item.classList.toggle('active', i === index);
+                });
+
+                this.renderFlow();
+            },
+
+            // 渲染数据流
+            renderFlow() {
+                const { currentVulnerability, currentInstanceIndex } = this.state;
+                if (!currentVulnerability || currentInstanceIndex < 0) return;
+
+                const instance = currentVulnerability.instances[currentInstanceIndex];
+                const flowContent = document.getElementById('flowContent');
+
+                // 提取数据流步骤
+                const flowSteps = this.extractFlowSteps(instance);
+
+                // 渲染数据流节点
+                const html = flowSteps.map((step, index) => {
+                    const nodeClass = index === 0 ? 'source' : (index === flowSteps.length - 1 ? 'sink' : '');
+                    const stepLabel = index === 0 ? '(Source)' : (index === flowSteps.length - 1 ? '(Sink)' : '');
+
+                    return `
+                        <div class="flow-node ${nodeClass}" onclick="app.selectFlowNode(${index})" id="flow-node-${index}">
+                            <div class="flow-node-step">Step ${index + 1} ${stepLabel}</div>
+                            <div class="flow-node-message">${this.escapeHtml(step.message || 'Data flow')}</div>
+                            <div class="flow-node-location">${step.uri}:${step.startLine}</div>
+                        </div>
+                        ${index < flowSteps.length - 1 ? '<div class="flow-connector"></div>' : ''}
+                    `;
+                }).join('');
+
+                flowContent.innerHTML = html || '<div class="empty-state"><div>无数据流信息</div></div>';
+                flowContent.scrollTop = 0; // 滚动到顶部
+
+                // 自动选择第一个节点
+                if (flowSteps.length > 0) {
+                    setTimeout(() => this.selectFlowNode(0), 0);
+                }
+            },
+
+            // 提取数据流步骤
+            extractFlowSteps(instance) {
+                // 从 codeFlows 提取
+                if (instance.codeFlows?.length > 0) {
+                    const threadFlow = instance.codeFlows[0].threadFlows?.[0];
+                    if (threadFlow?.locations) {
+                        return threadFlow.locations.map(loc => {
+                            const physicalLocation = loc.location.physicalLocation;
+                            return {
+                                message: loc.location.message?.text || '',
+                                uri: physicalLocation.artifactLocation.uri,
+                                startLine: physicalLocation.region.startLine,
+                                startColumn: physicalLocation.region.startColumn,
+                                endColumn: physicalLocation.region.endColumn,
+                                contextRegion: physicalLocation.contextRegion
+                            };
+                        });
+                    }
+                }
+
+                // 回退到主位置
+                if (instance.locations?.length > 0) {
+                    const location = instance.locations[0].physicalLocation;
+                    return [{
+                        message: instance.message.text,
+                        uri: location.artifactLocation.uri,
+                        startLine: location.region.startLine,
+                        startColumn: location.region.startColumn,
+                        endColumn: location.region.endColumn,
+                        contextRegion: location.contextRegion
+                    }];
+                }
+
+                return [];
+            },
+
+            // 选择数据流节点
+            selectFlowNode(nodeIndex) {
+                const { currentVulnerability, currentInstanceIndex } = this.state;
+                if (!currentVulnerability || currentInstanceIndex < 0) return;
+
+                const instance = currentVulnerability.instances[currentInstanceIndex];
+                const flowSteps = this.extractFlowSteps(instance);
+                const step = flowSteps[nodeIndex];
+
+                if (!step) return;
+
+                // 更新节点选中状态
+                document.querySelectorAll('.flow-node').forEach((node, i) => {
+                    node.classList.toggle('active', i === nodeIndex);
+                });
+
+                // 显示代码
+                this.displayCode(step);
+            },
+
+            // 显示代码
+            displayCode(step) {
+                const { uri, startLine, startColumn, endColumn, contextRegion } = step;
+                const filePathElement = document.getElementById('currentFilePath');
+                const codeContentElement = document.getElementById('codeContent');
+
+                filePathElement.textContent = uri;
+
+                const content = this.state.fileContents[uri];
+
+                // 情况1：只有代码片段
+                if (!content && contextRegion?.snippet?.text) {
+                    this.displayCodeSnippet(codeContentElement, contextRegion, startLine, startColumn, endColumn);
+                    return;
+                }
+
+                // 情况2：无内容
+                if (!content) {
+                    codeContentElement.innerHTML = `
+                        <div class="empty-state">
+                            <div>无法加载文件内容</div>
+                            <div style="font-size: 12px; margin-top: 10px; color: var(--text-muted);">
+                                ${uri}:${startLine}
+                            </div>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // 情况3：完整文件
+                this.displayFullCode(codeContentElement, content, startLine, startColumn, endColumn);
+            },
+
+            // 显示代码片段
+            displayCodeSnippet(container, contextRegion, highlightLine, startColumn, endColumn) {
+                const snippetText = contextRegion.snippet.text;
+                const snippetLines = snippetText.split('\n');
+                const startLine = contextRegion.startLine || 1;
+
+                const lineNumbersHtml = snippetLines.map((_, index) =>
+                    `<div class="line-number">${startLine + index}</div>`
+                ).join('');
+
+                const codeLinesHtml = snippetLines.map((line, index) => {
+                    const lineNum = startLine + index;
+                    const isHighlighted = lineNum === highlightLine;
+                    const className = isHighlighted ? 'code-line error-line' : 'code-line';
+                    const lineHtml = isHighlighted && startColumn && endColumn
+                        ? this.highlightInlineCode(line, startColumn, endColumn)
+                        : this.escapeHtml(line) || ' ';
+
+                    return `<div class="${className}">${lineHtml}</div>`;
+                }).join('');
+
+                container.innerHTML = `
+                    <div class="snippet-warning">⚠️ 仅显示代码片段（完整文件不可用）</div>
+                    <div class="code-line-wrapper">
+                        <div class="line-numbers">${lineNumbersHtml}</div>
+                        <div class="code-lines">${codeLinesHtml}</div>
+                    </div>
+                `;
+
+                this.scrollToHighlightedLine(container);
+            },
+
+            // 显示完整代码
+            displayFullCode(container, content, highlightLine, startColumn, endColumn) {
+                const lines = content.split('\n');
+
+                const lineNumbersHtml = lines.map((_, index) =>
+                    `<div class="line-number">${index + 1}</div>`
+                ).join('');
+
+                const codeLinesHtml = lines.map((line, index) => {
+                    const lineNum = index + 1;
+                    const isHighlighted = lineNum === highlightLine;
+                    const className = isHighlighted ? 'code-line error-line' : 'code-line';
+                    const lineHtml = isHighlighted && startColumn && endColumn
+                        ? this.highlightInlineCode(line, startColumn, endColumn)
+                        : this.escapeHtml(line) || ' ';
+
+                    return `<div class="${className}">${lineHtml}</div>`;
+                }).join('');
+
+                container.innerHTML = `
+                    <div class="code-line-wrapper">
+                        <div class="line-numbers">${lineNumbersHtml}</div>
+                        <div class="code-lines">${codeLinesHtml}</div>
+                    </div>
+                `;
+
+                this.scrollToHighlightedLine(container);
+            },
+
+            // 滚动到高亮行
+            scrollToHighlightedLine(container) {
+                setTimeout(() => {
+                    const highlightedLine = container.querySelector('.error-line');
+                    if (highlightedLine) {
+                        highlightedLine.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }, 100);
+            },
+
+            // 高亮行内代码
+            highlightInlineCode(line, startColumn, endColumn) {
+                if (!line || startColumn < 1) {
+                    return this.escapeHtml(line) || ' ';
+                }
+
+                // SARIF 列号从1开始，JS索引从0开始
+                const start = Math.max(0, Math.min(startColumn - 1, line.length));
+                const end = Math.max(start, Math.min(endColumn || line.length, line.length));
+
+                const before = line.substring(0, start);
+                const highlighted = line.substring(start, end);
+                const after = line.substring(end);
+
+                return this.escapeHtml(before) +
+                       '<span class="code-highlight">' + this.escapeHtml(highlighted) + '</span>' +
+                       this.escapeHtml(after);
+            },
+
+            // HTML 转义
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            },
+
+            // 初始化分隔条拖动
+            initResizers() {
+                const gridContainer = document.getElementById('gridContainer');
+                const resizerV = document.getElementById('resizerV');
+                const resizerHTop = document.getElementById('resizerHTop');
+                const resizerHBottom = document.getElementById('resizerHBottom');
+
+                let isResizing = false;
+                let currentResizer = null;
+
+                // 最小尺寸常量
+                const MIN_SIZE = 200;
+                const MIN_BOTTOM_HEIGHT = 150;
+
+                const startResize = (resizer, type) => (e) => {
+                    isResizing = true;
+                    currentResizer = type;
+                    resizer.classList.add('resizing');
+                    e.preventDefault();
+                };
+
+                resizerV.addEventListener('mousedown', startResize(resizerV, 'vertical'));
+                resizerHTop.addEventListener('mousedown', startResize(resizerHTop, 'horizontal-top'));
+                resizerHBottom.addEventListener('mousedown', startResize(resizerHBottom, 'horizontal-bottom'));
+
+                document.addEventListener('mousemove', (e) => {
+                    if (!isResizing) return;
+
+                    const containerRect = gridContainer.getBoundingClientRect();
+
+                    if (currentResizer === 'vertical') {
+                        const relativeY = e.clientY - containerRect.top;
+                        const topHeight = relativeY - 2;
+                        const bottomHeight = containerRect.height - relativeY - 2;
+
+                        if (topHeight >= MIN_SIZE && bottomHeight >= MIN_BOTTOM_HEIGHT) {
+                            gridContainer.style.gridTemplateRows = `${topHeight}px 4px ${bottomHeight}px`;
+                        }
+                    } else if (currentResizer === 'horizontal-top' || currentResizer === 'horizontal-bottom') {
+                        const relativeX = e.clientX - containerRect.left;
+                        const leftWidth = relativeX - 2;
+                        const rightWidth = containerRect.width - relativeX - 2;
+
+                        if (leftWidth >= MIN_SIZE && rightWidth >= MIN_SIZE) {
+                            gridContainer.style.gridTemplateColumns = `${leftWidth}px 4px ${rightWidth}px`;
+                        }
+                    }
+                });
+
+                document.addEventListener('mouseup', () => {
+                    if (isResizing) {
+                        isResizing = false;
+                        resizerV.classList.remove('resizing');
+                        resizerHTop.classList.remove('resizing');
+                        resizerHBottom.classList.remove('resizing');
+                        currentResizer = null;
+                    }
+                });
+            }
+        };
+
+        // 初始化应用
+        app.init();
+    </script>
+</body>
+</html>
