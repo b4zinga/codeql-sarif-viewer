@@ -1,0 +1,345 @@
+================================================================================
+SARIF 漏洞分析报告
+总漏洞数: 4
+================================================================================
+
+
+================================================================================
+漏洞 #1
+================================================================================
+
+规则 ID:    py/stack-trace-exposure
+严重程度:   warning
+描述:       [Stack trace information](1) flows to this location and may be exposed to an external user.
+
+────────────────────────────────────────────────────────────────────────────────
+数据流路径 (3 个步骤)
+────────────────────────────────────────────────────────────────────────────────
+
+  [1] app/api/ssrf.py:17:25
+      → Stack trace information
+  [2] app/api/ssrf.py:17:25
+      → ControlFlowNode for e
+  [3] app/api/ssrf.py:18:24
+      → ControlFlowNode for Dict
+
+────────────────────────────────────────────────────────────────────────────────
+涉及的文件 (1 个)
+────────────────────────────────────────────────────────────────────────────────
+
+  • app/api/ssrf.py (30 行)
+
+────────────────────────────────────────────────────────────────────────────────
+文件内容
+────────────────────────────────────────────────────────────────────────────────
+
+>>> app/api/ssrf.py
+────────────────────────────────────────────────────────────────────────────────
+ 1 | import json
+ 2 | from flask import Blueprint, jsonify, request
+ 3 |
+ 4 | from app.utils import remote_request, safe_remote_request
+ 5 |
+ 6 |
+ 7 | ssrf_bp = Blueprint("ssrf", __name__)
+ 8 |
+ 9 |
+10 | @ssrf_bp.get("/ssrf/1")
+11 | def ssrf_1():
+12 |     url = request.args.get("url")
+13 |     try:
+14 |         response = remote_request(url)
+15 |         json_resp = json.loads(response)
+16 |         return jsonify(json_resp)
+17 |     except Exception as e:
+18 |         return jsonify({"error": str(e)})
+19 |
+20 |
+21 | @ssrf_bp.get("/ssrf/2")
+22 | def ssrf_2():
+23 |     url = request.args.get("url")
+24 |     try:
+25 |         response = safe_remote_request(url)
+26 |         json_resp = json.loads(response)
+27 |         return jsonify(json_resp)
+28 |     except Exception as e:
+29 |         return jsonify({"error": str(e)})
+────────────────────────────────────────────────────────────────────────────────
+
+
+================================================================================
+漏洞 #2
+================================================================================
+
+规则 ID:    py/stack-trace-exposure
+严重程度:   warning
+描述:       [Stack trace information](1) flows to this location and may be exposed to an external user.
+
+────────────────────────────────────────────────────────────────────────────────
+数据流路径 (3 个步骤)
+────────────────────────────────────────────────────────────────────────────────
+
+  [1] app/api/ssrf.py:28:25
+      → Stack trace information
+  [2] app/api/ssrf.py:28:25
+      → ControlFlowNode for e
+  [3] app/api/ssrf.py:29:24
+      → ControlFlowNode for Dict
+
+────────────────────────────────────────────────────────────────────────────────
+涉及的文件 (1 个)
+────────────────────────────────────────────────────────────────────────────────
+
+  • app/api/ssrf.py (30 行)
+
+────────────────────────────────────────────────────────────────────────────────
+文件内容
+────────────────────────────────────────────────────────────────────────────────
+
+>>> app/api/ssrf.py
+────────────────────────────────────────────────────────────────────────────────
+ 1 | import json
+ 2 | from flask import Blueprint, jsonify, request
+ 3 |
+ 4 | from app.utils import remote_request, safe_remote_request
+ 5 |
+ 6 |
+ 7 | ssrf_bp = Blueprint("ssrf", __name__)
+ 8 |
+ 9 |
+10 | @ssrf_bp.get("/ssrf/1")
+11 | def ssrf_1():
+12 |     url = request.args.get("url")
+13 |     try:
+14 |         response = remote_request(url)
+15 |         json_resp = json.loads(response)
+16 |         return jsonify(json_resp)
+17 |     except Exception as e:
+18 |         return jsonify({"error": str(e)})
+19 |
+20 |
+21 | @ssrf_bp.get("/ssrf/2")
+22 | def ssrf_2():
+23 |     url = request.args.get("url")
+24 |     try:
+25 |         response = safe_remote_request(url)
+26 |         json_resp = json.loads(response)
+27 |         return jsonify(json_resp)
+28 |     except Exception as e:
+29 |         return jsonify({"error": str(e)})
+────────────────────────────────────────────────────────────────────────────────
+
+
+================================================================================
+漏洞 #3
+================================================================================
+
+规则 ID:    py/full-ssrf
+严重程度:   warning
+描述:       The full URL of this request depends on a [user-provided value](1).
+
+────────────────────────────────────────────────────────────────────────────────
+数据流路径 (10 个步骤)
+────────────────────────────────────────────────────────────────────────────────
+
+  [1] app/api/ssrf.py:2:39
+      → user-provided value
+  [2] app/api/ssrf.py:2:39
+      → ControlFlowNode for ImportMember
+  [3] app/api/ssrf.py:2:39
+      → ControlFlowNode for request
+  [4] app/api/ssrf.py:12:11
+      → ControlFlowNode for request
+  [5] app/api/ssrf.py:12:11
+      → ControlFlowNode for Attribute
+  [6] app/api/ssrf.py:12:11
+      → ControlFlowNode for Attribute()
+  [7] app/api/ssrf.py:12:5
+      → ControlFlowNode for url
+  [8] app/api/ssrf.py:14:35
+      → ControlFlowNode for url
+  [9] app/utils.py:4:20
+      → ControlFlowNode for url
+  [10] app/utils.py:5:25
+      → ControlFlowNode for url
+
+────────────────────────────────────────────────────────────────────────────────
+涉及的文件 (2 个)
+────────────────────────────────────────────────────────────────────────────────
+
+  • app/api/ssrf.py (30 行)
+  • app/utils.py (24 行)
+
+────────────────────────────────────────────────────────────────────────────────
+文件内容
+────────────────────────────────────────────────────────────────────────────────
+
+>>> app/api/ssrf.py
+────────────────────────────────────────────────────────────────────────────────
+ 1 | import json
+ 2 | from flask import Blueprint, jsonify, request
+ 3 |
+ 4 | from app.utils import remote_request, safe_remote_request
+ 5 |
+ 6 |
+ 7 | ssrf_bp = Blueprint("ssrf", __name__)
+ 8 |
+ 9 |
+10 | @ssrf_bp.get("/ssrf/1")
+11 | def ssrf_1():
+12 |     url = request.args.get("url")
+13 |     try:
+14 |         response = remote_request(url)
+15 |         json_resp = json.loads(response)
+16 |         return jsonify(json_resp)
+17 |     except Exception as e:
+18 |         return jsonify({"error": str(e)})
+19 |
+20 |
+21 | @ssrf_bp.get("/ssrf/2")
+22 | def ssrf_2():
+23 |     url = request.args.get("url")
+24 |     try:
+25 |         response = safe_remote_request(url)
+26 |         json_resp = json.loads(response)
+27 |         return jsonify(json_resp)
+28 |     except Exception as e:
+29 |         return jsonify({"error": str(e)})
+────────────────────────────────────────────────────────────────────────────────
+
+>>> app/utils.py
+────────────────────────────────────────────────────────────────────────────────
+ 1 | import requests
+ 2 |
+ 3 |
+ 4 | def remote_request(url: str) -> str:
+ 5 |     resp = requests.get(url, timeout=10)
+ 6 |     return resp.text
+ 7 |
+ 8 |
+ 9 | def check_remote_target(target: str) -> bool:
+10 |     safe_targets = [
+11 |         "https://www.baidu.com/",
+12 |     ]
+13 |     for t in safe_targets:
+14 |         if target.startswith(t):
+15 |             return True
+16 |     return False
+17 |
+18 |
+19 | def safe_remote_request(url: str) -> str:
+20 |     if check_remote_target(url):
+21 |         return remote_request(url)
+22 |     else:
+23 |         raise Exception("unsafe host")
+────────────────────────────────────────────────────────────────────────────────
+
+
+================================================================================
+漏洞 #4
+================================================================================
+
+规则 ID:    py/full-ssrf
+严重程度:   warning
+描述:       The full URL of this request depends on a [user-provided value](1).
+
+────────────────────────────────────────────────────────────────────────────────
+数据流路径 (12 个步骤)
+────────────────────────────────────────────────────────────────────────────────
+
+  [1] app/api/ssrf.py:2:39
+      → user-provided value
+  [2] app/api/ssrf.py:2:39
+      → ControlFlowNode for ImportMember
+  [3] app/api/ssrf.py:2:39
+      → ControlFlowNode for request
+  [4] app/api/ssrf.py:23:11
+      → ControlFlowNode for request
+  [5] app/api/ssrf.py:23:11
+      → ControlFlowNode for Attribute
+  [6] app/api/ssrf.py:23:11
+      → ControlFlowNode for Attribute()
+  [7] app/api/ssrf.py:23:5
+      → ControlFlowNode for url
+  [8] app/api/ssrf.py:25:40
+      → ControlFlowNode for url
+  [9] app/utils.py:19:25
+      → ControlFlowNode for url
+  [10] app/utils.py:21:31
+      → ControlFlowNode for url
+  [11] app/utils.py:4:20
+      → ControlFlowNode for url
+  [12] app/utils.py:5:25
+      → ControlFlowNode for url
+
+────────────────────────────────────────────────────────────────────────────────
+涉及的文件 (2 个)
+────────────────────────────────────────────────────────────────────────────────
+
+  • app/api/ssrf.py (30 行)
+  • app/utils.py (24 行)
+
+────────────────────────────────────────────────────────────────────────────────
+文件内容
+────────────────────────────────────────────────────────────────────────────────
+
+>>> app/api/ssrf.py
+────────────────────────────────────────────────────────────────────────────────
+ 1 | import json
+ 2 | from flask import Blueprint, jsonify, request
+ 3 |
+ 4 | from app.utils import remote_request, safe_remote_request
+ 5 |
+ 6 |
+ 7 | ssrf_bp = Blueprint("ssrf", __name__)
+ 8 |
+ 9 |
+10 | @ssrf_bp.get("/ssrf/1")
+11 | def ssrf_1():
+12 |     url = request.args.get("url")
+13 |     try:
+14 |         response = remote_request(url)
+15 |         json_resp = json.loads(response)
+16 |         return jsonify(json_resp)
+17 |     except Exception as e:
+18 |         return jsonify({"error": str(e)})
+19 |
+20 |
+21 | @ssrf_bp.get("/ssrf/2")
+22 | def ssrf_2():
+23 |     url = request.args.get("url")
+24 |     try:
+25 |         response = safe_remote_request(url)
+26 |         json_resp = json.loads(response)
+27 |         return jsonify(json_resp)
+28 |     except Exception as e:
+29 |         return jsonify({"error": str(e)})
+────────────────────────────────────────────────────────────────────────────────
+
+>>> app/utils.py
+────────────────────────────────────────────────────────────────────────────────
+ 1 | import requests
+ 2 |
+ 3 |
+ 4 | def remote_request(url: str) -> str:
+ 5 |     resp = requests.get(url, timeout=10)
+ 6 |     return resp.text
+ 7 |
+ 8 |
+ 9 | def check_remote_target(target: str) -> bool:
+10 |     safe_targets = [
+11 |         "https://www.baidu.com/",
+12 |     ]
+13 |     for t in safe_targets:
+14 |         if target.startswith(t):
+15 |             return True
+16 |     return False
+17 |
+18 |
+19 | def safe_remote_request(url: str) -> str:
+20 |     if check_remote_target(url):
+21 |         return remote_request(url)
+22 |     else:
+23 |         raise Exception("unsafe host")
+────────────────────────────────────────────────────────────────────────────────
+
