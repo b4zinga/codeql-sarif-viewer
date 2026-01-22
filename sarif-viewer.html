@@ -135,6 +135,19 @@
             font-size: 16px;
             font-weight: 600;
             color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-md);
+        }
+
+        .toolbar-filename {
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            color: var(--accent-primary);
+            font-weight: normal;
+            background: var(--bg-secondary);
+            padding: 4px var(--spacing-md);
+            border-radius: var(--radius-md);
         }
 
         .toolbar-stats {
@@ -196,6 +209,12 @@
             flex-shrink: 0;
         }
 
+        .panel-header.with-tabs {
+            padding: 0;
+            flex-direction: column;
+            align-items: stretch;
+        }
+
         .panel-header-title {
             font-weight: 600;
         }
@@ -212,6 +231,65 @@
             grid-row: 1;
             border-right: 1px solid var(--border-color);
             border-bottom: 1px solid var(--border-color);
+        }
+
+        .file-tabs-container {
+            display: flex;
+            align-items: center;
+            background: var(--bg-secondary);
+            overflow-x: auto;
+            overflow-y: hidden;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .file-tabs-container::-webkit-scrollbar {
+            height: 4px;
+        }
+
+        .file-tab {
+            padding: 10px var(--spacing-lg);
+            font-size: 12px;
+            font-family: 'Courier New', monospace;
+            color: var(--text-muted);
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            max-width: 250px;
+        }
+
+        .file-tab:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+        }
+
+        .file-tab.active {
+            background: var(--bg-primary);
+            color: var(--accent-primary);
+            border-bottom: 2px solid var(--accent-primary);
+        }
+
+        .file-tab-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .file-tab-badge {
+            background: var(--bg-elevated);
+            color: var(--text-muted);
+            padding: 2px 6px;
+            border-radius: var(--radius-sm);
+            font-size: 10px;
+            flex-shrink: 0;
+        }
+
+        .file-tab.active .file-tab-badge {
+            background: rgba(78, 201, 176, 0.2);
+            color: var(--accent-primary);
         }
 
         .file-path {
@@ -271,7 +349,7 @@
             box-shadow: 0 0 0 2px rgba(255, 193, 7, 0.2);
         }
 
-        /* ==================== 数据流链路 ==================== */
+        /* ==================== 漏洞链路 ==================== */
         .flow-panel {
             grid-column: 3;
             grid-row: 1;
@@ -300,9 +378,19 @@
         }
 
         .flow-node.active {
-            background: #37373d;
+            background: rgba(255, 193, 7, 0.25);
             border-left-color: var(--highlight-yellow);
+            border-color: var(--highlight-yellow);
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .flow-node.active .flow-node-message {
+            color: #ffd54f;
+            font-weight: 500;
+        }
+
+        .flow-node.active .flow-node-location {
+            color: #ffc107;
         }
 
         .flow-node.source {
@@ -587,7 +675,10 @@
     <div class="main-container">
         <!-- 工具栏 -->
         <div class="toolbar">
-            <div class="toolbar-title">CodeQL Security Analysis</div>
+            <div class="toolbar-title">
+                <span>CodeQL Security Analysis</span>
+                <span class="toolbar-filename" id="toolbarFilename" style="display: none;"></span>
+            </div>
             <div class="toolbar-stats">
                 <span>Total: <span id="totalCount">0</span></span>
                 <span class="error-count">Error: <span id="errorCount">0</span></span>
@@ -602,9 +693,12 @@
         <div class="grid-container" id="gridContainer">
             <!-- 代码查看器 -->
             <div class="panel code-viewer">
-                <div class="panel-header">
-                    <span>📄</span>
-                    <span class="file-path" id="currentFilePath">未选择文件</span>
+                <div class="panel-header with-tabs">
+                    <div class="file-tabs-container" id="fileTabsContainer">
+                        <div style="padding: 10px 16px; font-size: 12px; color: var(--text-muted);">
+                            📄 未选择文件
+                        </div>
+                    </div>
                 </div>
                 <div class="panel-content code-content" id="codeContent">
                     <div class="empty-state">
@@ -620,10 +714,10 @@
             <!-- 水平分隔条 - 上 -->
             <div class="resizer resizer-horizontal-top" id="resizerHTop"></div>
 
-            <!-- 数据流链路 -->
+            <!-- 漏洞链路 -->
             <div class="panel flow-panel">
                 <div class="panel-header">
-                    <span class="panel-header-title">🔗 数据流链路</span>
+                    <span class="panel-header-title">🔗 漏洞链路</span>
                 </div>
                 <div class="panel-content flow-content" id="flowContent">
                     <div class="empty-state">
@@ -632,7 +726,7 @@
                             <line x1="12" y1="8" x2="12" y2="12"></line>
                             <line x1="12" y1="16" x2="12.01" y2="16"></line>
                         </svg>
-                        <div>选择漏洞实例查看数据流</div>
+                        <div>选择漏洞实例查看漏洞链路</div>
                     </div>
                 </div>
             </div>
@@ -678,7 +772,12 @@
                 fileContents: {},
                 vulnerabilities: [],
                 currentVulnerability: null,
-                currentInstanceIndex: -1
+                currentInstanceIndex: -1,
+                currentFile: null,
+                allFiles: [],
+                flowSteps: [],
+                currentHighlight: null, // {startLine, startColumn, endColumn}
+                currentSarifFileName: null // 当前加载的SARIF文件名
             },
 
             // 初始化
@@ -697,16 +796,31 @@
                 const file = e.target.files[0];
                 if (!file) return;
 
+                // 保存文件名
+                this.state.currentSarifFileName = file.name;
+
+                console.log('开始读取文件:', file.name, '大小:', (file.size / 1024 / 1024).toFixed(2) + 'MB');
+
                 const reader = new FileReader();
                 reader.onload = (event) => {
                     try {
+                        console.log('文件读取完成，开始解析JSON...');
                         this.state.sarifData = JSON.parse(event.target.result);
+                        console.log('JSON解析成功，SARIF数据:', this.state.sarifData);
+
                         document.getElementById('fileSelectorOverlay').classList.add('hidden');
                         this.parseAndRender();
                     } catch (error) {
+                        console.error('文件解析失败:', error);
                         alert('文件解析失败: ' + error.message);
                     }
                 };
+
+                reader.onerror = (error) => {
+                    console.error('文件读取失败:', error);
+                    alert('文件读取失败');
+                };
+
                 reader.readAsText(file);
             },
 
@@ -718,14 +832,70 @@
                     fileContents: {},
                     vulnerabilities: [],
                     currentVulnerability: null,
-                    currentInstanceIndex: -1
+                    currentInstanceIndex: -1,
+                    currentFile: null,
+                    allFiles: [],
+                    flowSteps: [],
+                    currentHighlight: null,
+                    currentSarifFileName: null
                 };
+
+                // 清空所有面板显示
+                this.clearAllPanels();
+            },
+
+            // 清空所有面板
+            clearAllPanels() {
+                // 清空文件名
+                const filenameElement = document.getElementById('toolbarFilename');
+                filenameElement.style.display = 'none';
+                filenameElement.textContent = '';
+
+                // 清空统计信息
+                document.getElementById('totalCount').textContent = '0';
+                document.getElementById('errorCount').textContent = '0';
+                document.getElementById('warningCount').textContent = '0';
+
+                // 清空漏洞列表
+                document.getElementById('vulnerabilityList').innerHTML = '<div class="empty-state"><div>暂无漏洞数据</div></div>';
+
+                // 清空漏洞实例
+                document.getElementById('instanceList').innerHTML = '<div class="empty-state"><div>选择左侧漏洞类别</div></div>';
+
+                // 清空漏洞链路
+                document.getElementById('flowContent').innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="8" x2="12" y2="12"></line>
+                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                        </svg>
+                        <div>选择漏洞实例查看漏洞链路</div>
+                    </div>
+                `;
+
+                // 清空文件标签
+                document.getElementById('fileTabsContainer').innerHTML = '<div style="padding: 10px 16px; font-size: 12px; color: var(--text-muted);">📄 未选择文件</div>';
+
+                // 清空代码显示
+                document.getElementById('codeContent').innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                            <polyline points="13 2 13 9 20 9"></polyline>
+                        </svg>
+                        <div>点击漏洞链路节点查看源代码</div>
+                    </div>
+                `;
             },
 
             // 解析 SARIF 数据
             parseAndRender() {
                 const { sarifData } = this.state;
+                console.log('开始解析SARIF数据...');
+
                 if (!sarifData?.runs?.length) {
+                    console.error('无效的SARIF文件格式，runs为空');
                     alert('无效的SARIF文件格式');
                     return;
                 }
@@ -734,6 +904,12 @@
                 const results = run.results || [];
                 const rules = run.tool.driver.rules || [];
                 const artifacts = run.artifacts || [];
+
+                console.log('SARIF数据统计:', {
+                    results: results.length,
+                    rules: rules.length,
+                    artifacts: artifacts.length
+                });
 
                 // 构建规则映射
                 const ruleMap = rules.reduce((map, rule) => {
@@ -748,12 +924,30 @@
                     }
                 });
 
+                console.log('文件内容数量:', Object.keys(this.state.fileContents).length);
+
                 // 处理漏洞数据
                 this.state.vulnerabilities = this.processVulnerabilities(results, ruleMap);
+
+                console.log('处理后的漏洞数量:', this.state.vulnerabilities.length);
 
                 // 渲染界面
                 this.renderStats(results);
                 this.renderVulnerabilityList();
+                this.updateToolbarFilename();
+
+                console.log('界面渲染完成');
+            },
+
+            // 更新工具栏文件名显示
+            updateToolbarFilename() {
+                const filenameElement = document.getElementById('toolbarFilename');
+                if (this.state.currentSarifFileName) {
+                    filenameElement.textContent = this.state.currentSarifFileName;
+                    filenameElement.style.display = 'inline-block';
+                } else {
+                    filenameElement.style.display = 'none';
+                }
             },
 
             // 处理漏洞数据（展开多个 codeFlows）
@@ -848,7 +1042,7 @@
 
                 this.renderInstanceList();
 
-                // 清空数据流
+                // 清空漏洞链路
                 document.getElementById('flowContent').innerHTML = `
                     <div class="empty-state">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -908,9 +1102,110 @@
                 });
 
                 this.renderFlow();
+
+                // 提取并渲染文件标签
+                const instance = this.state.currentVulnerability.instances[index];
+                this.state.flowSteps = this.extractFlowSteps(instance);
+                this.extractAndRenderFileTabs();
             },
 
-            // 渲染数据流
+            // 提取并渲染文件标签
+            extractAndRenderFileTabs() {
+                const { flowSteps } = this.state;
+
+                // 提取唯一的文件列表，并统计每个文件的节点数量
+                const fileMap = {};
+                flowSteps.forEach(step => {
+                    if (!fileMap[step.uri]) {
+                        fileMap[step.uri] = { uri: step.uri, count: 0 };
+                    }
+                    fileMap[step.uri].count++;
+                });
+
+                this.state.allFiles = Object.values(fileMap);
+                this.renderFileTabs();
+            },
+
+            // 渲染文件标签
+            renderFileTabs() {
+                const { allFiles, currentFile } = this.state;
+                const container = document.getElementById('fileTabsContainer');
+
+                if (!allFiles.length) {
+                    container.innerHTML = '<div style="padding: 10px 16px; font-size: 12px; color: var(--text-muted);">📄 未选择文件</div>';
+                    return;
+                }
+
+                const html = allFiles.map((file, index) => {
+                    const fileName = file.uri.split('/').pop() || file.uri;
+                    const isActive = currentFile === file.uri;
+
+                    return `
+                        <div class="file-tab ${isActive ? 'active' : ''}" onclick="app.switchToFileByIndex(${index})">
+                            <span class="file-tab-name" title="${this.escapeHtml(file.uri)}">${this.escapeHtml(fileName)}</span>
+                            <span class="file-tab-badge">${file.count}</span>
+                        </div>
+                    `;
+                }).join('');
+
+                container.innerHTML = html;
+            },
+
+            // 通过索引切换文件
+            switchToFileByIndex(index) {
+                const file = this.state.allFiles[index];
+                if (!file) return;
+                this.switchToFile(file.uri);
+            },
+
+            // 切换到指定文件
+            switchToFile(uri) {
+                this.state.currentFile = uri;
+                this.state.currentHighlight = null; // 清除高亮
+                this.renderFileTabs();
+                this.displayFileCode(uri);
+            },
+
+            // 显示文件代码（不带高亮）
+            displayFileCode(uri) {
+                const codeContentElement = document.getElementById('codeContent');
+                const content = this.state.fileContents[uri];
+
+                if (!content) {
+                    codeContentElement.innerHTML = `
+                        <div class="empty-state">
+                            <div>无法加载文件内容</div>
+                            <div style="font-size: 12px; margin-top: 10px; color: var(--text-muted);">
+                                ${uri}
+                            </div>
+                        </div>
+                    `;
+                    return;
+                }
+
+                const lines = content.split('\n');
+                const lineNumbersHtml = lines.map((_, index) =>
+                    `<div class="line-number">${index + 1}</div>`
+                ).join('');
+
+                const codeLinesHtml = lines.map((line) => {
+                    return `<div class="code-line">${this.escapeHtml(line) || ' '}</div>`;
+                }).join('');
+
+                codeContentElement.innerHTML = `
+                    <div class="code-line-wrapper">
+                        <div class="line-numbers">${lineNumbersHtml}</div>
+                        <div class="code-lines">${codeLinesHtml}</div>
+                    </div>
+                `;
+
+                // 如果有当前高亮，应用高亮
+                if (this.state.currentHighlight) {
+                    this.applyHighlight(this.state.currentHighlight);
+                }
+            },
+
+            // 渲染漏洞链路
             renderFlow() {
                 const { currentVulnerability, currentInstanceIndex } = this.state;
                 if (!currentVulnerability || currentInstanceIndex < 0) return;
@@ -918,10 +1213,10 @@
                 const instance = currentVulnerability.instances[currentInstanceIndex];
                 const flowContent = document.getElementById('flowContent');
 
-                // 提取数据流步骤
+                // 提取漏洞链路步骤
                 const flowSteps = this.extractFlowSteps(instance);
 
-                // 渲染数据流节点
+                // 渲染漏洞链路节点
                 const html = flowSteps.map((step, index) => {
                     const nodeClass = index === 0 ? 'source' : (index === flowSteps.length - 1 ? 'sink' : '');
                     const stepLabel = index === 0 ? '(Source)' : (index === flowSteps.length - 1 ? '(Sink)' : '');
@@ -936,7 +1231,7 @@
                     `;
                 }).join('');
 
-                flowContent.innerHTML = html || '<div class="empty-state"><div>无数据流信息</div></div>';
+                flowContent.innerHTML = html || '<div class="empty-state"><div>无漏洞链路信息</div></div>';
                 flowContent.scrollTop = 0; // 滚动到顶部
 
                 // 自动选择第一个节点
@@ -945,7 +1240,7 @@
                 }
             },
 
-            // 提取数据流步骤
+            // 提取漏洞链路步骤
             extractFlowSteps(instance) {
                 // 从 codeFlows 提取
                 if (instance.codeFlows?.length > 0) {
@@ -981,13 +1276,9 @@
                 return [];
             },
 
-            // 选择数据流节点
+            // 选择漏洞链路节点
             selectFlowNode(nodeIndex) {
-                const { currentVulnerability, currentInstanceIndex } = this.state;
-                if (!currentVulnerability || currentInstanceIndex < 0) return;
-
-                const instance = currentVulnerability.instances[currentInstanceIndex];
-                const flowSteps = this.extractFlowSteps(instance);
+                const { flowSteps } = this.state;
                 const step = flowSteps[nodeIndex];
 
                 if (!step) return;
@@ -997,17 +1288,22 @@
                     node.classList.toggle('active', i === nodeIndex);
                 });
 
-                // 显示代码
+                // 切换到对应文件
+                this.state.currentFile = step.uri;
+                this.state.currentHighlight = {
+                    startLine: step.startLine,
+                    startColumn: step.startColumn,
+                    endColumn: step.endColumn
+                };
+
+                this.renderFileTabs();
                 this.displayCode(step);
             },
 
             // 显示代码
             displayCode(step) {
                 const { uri, startLine, startColumn, endColumn, contextRegion } = step;
-                const filePathElement = document.getElementById('currentFilePath');
                 const codeContentElement = document.getElementById('codeContent');
-
-                filePathElement.textContent = uri;
 
                 const content = this.state.fileContents[uri];
 
@@ -1093,6 +1389,35 @@
                 `;
 
                 this.scrollToHighlightedLine(container);
+            },
+
+            // 应用高亮到当前显示的代码
+            applyHighlight(highlight) {
+                const { startLine, startColumn, endColumn } = highlight;
+                const codeLines = document.querySelectorAll('.code-line');
+
+                codeLines.forEach((lineElement, index) => {
+                    const lineNum = index + 1;
+                    if (lineNum === startLine) {
+                        lineElement.classList.add('error-line');
+
+                        // 重新渲染该行以添加高亮
+                        const content = this.state.fileContents[this.state.currentFile];
+                        if (content) {
+                            const lines = content.split('\n');
+                            const line = lines[index];
+                            const lineHtml = startColumn && endColumn
+                                ? this.highlightInlineCode(line, startColumn, endColumn)
+                                : this.escapeHtml(line) || ' ';
+                            lineElement.innerHTML = lineHtml;
+                        }
+
+                        // 滚动到该行
+                        setTimeout(() => {
+                            lineElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }, 100);
+                    }
+                });
             },
 
             // 滚动到高亮行
