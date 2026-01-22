@@ -310,18 +310,22 @@
         }
 
         .line-numbers {
-            background: var(--bg-primary);
-            color: var(--text-muted);
-            padding: var(--spacing-lg) 0;
+            background: var(--bg-secondary);
+            color: #858585;
+            padding: var(--spacing-lg) var(--spacing-sm);
             text-align: right;
             user-select: none;
-            min-width: 50px;
-            border-right: 1px solid var(--border-color);
+            min-width: 60px;
+            border-right: 2px solid var(--border-color);
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 13px;
+            flex-shrink: 0;
         }
 
         .line-number {
             padding: 0 var(--spacing-md);
             line-height: 1.6;
+            min-height: 1.6em;
         }
 
         .code-lines {
